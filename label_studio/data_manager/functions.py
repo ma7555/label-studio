@@ -97,6 +97,27 @@ def get_all_columns(project, *_):
 
     result['columns'] += [
         {
+            'id': 'assignment_assigned_to_email',
+            'title': 'Assigned To',
+            'type': 'String',
+            'target': 'tasks',
+            'help': 'User assigned to annotate this task',
+            'visibility_defaults': {'explore': True, 'labeling': True},
+            'project_defined': False,
+        },
+        {
+            'id': 'assignment_status',
+            'title': 'Assignment Status',
+            'type': 'String',
+            'target': 'tasks',
+            'help': 'Assignment status for this task',
+            'visibility_defaults': {'explore': True, 'labeling': True},
+            'project_defined': False,
+        },
+    ]
+
+    result['columns'] += [
+        {
             'id': 'inner_id',
             'title': 'Inner ID',
             'type': 'Number',

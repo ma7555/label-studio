@@ -34,6 +34,13 @@ from drf_spectacular.views import (
 
 urlpatterns = [
     re_path(r'^$', views.main, name='main'),
+    path('api/custom-dashboard/models/', views.dashboard_model_api, name='custom-dashboard-models'),
+    path('api/custom-dashboard/models/<str:version>/', views.dashboard_model_api, name='custom-dashboard-model'),
+    path(
+        'api/custom-dashboard/models/<str:version>/artifacts/<path:artifact_path>',
+        views.dashboard_model_artifact,
+        name='custom-dashboard-model-artifact',
+    ),
     re_path(r'^sw\.js$', views.static_file_with_host_resolver('js/sw.js', content_type='text/javascript')),
     re_path(
         r'^sw-fallback\.js$',

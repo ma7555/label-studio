@@ -322,6 +322,10 @@ DataManagerPage.context = ({ dmRef }) => {
           {label}
         </Link>
       ))}
+
+      <a className={buttonVariant({ size: "small", look: "outlined" })} href={`/projects/${project.id}/dashboard/`}>
+        Dashboard
+      </a>
     </Space>
   ) : null;
 };

@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block divider %}{% endblock %}
+
+{% block frontend_settings %}
+{
+  breadcrumbs: [
+    { title: "Projects", href: "/projects" },
+    {% if project %}{ title: "{{ project.title|escapejs }}", href: "/projects/{{ project.id }}/data" },{% endif %}
+    { title: "Dashboard" }
+  ],
+}
+{% endblock %}
+
+{% block head %}{% endblock %}
+
+{% block content %}
+<div class="ui container">
+  <div class="ui vertical segment">
+    <div class="ui stackable grid">
+      <div class="twelve wide column">
+        <div class="ui small header">Model Registry</div>
+        <h1 class="ui header">
+          {% if project %}{{ project.title }} Dashboard{% else %}YOLO Model Dashboard{% endif %}
+        </h1>
+        <p>
+          {% if project %}Project-specific training and evaluation history.{% else %}Training and evaluation history across projects.{% endif %}
+        </p>
+      </div>
+      {% if project %}
+      <div class="four wide right aligned column">
+        <a class="lsf-button-ls" href="/projects/{{ project.id }}/data">Back to Data</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="ui four stackable cards">
+    <div class="card">
+      <div class="content">
+        <div class="meta">Current version</div>
+        <div class="header">{{ registry.current_version|default:'None promoted yet' }}</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="content">
+        <div class="meta">Promotion metric</div>
+        <div class="header">{{ registry.promotion_metric|default:'fitness' }}</div>
+        <div class="description">minimum delta {{ registry.promotion_min_delta|default:'0.0' }}</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="content">
+        <div class="meta">Versions</div>
+        <div class="header">{{ registry.versions|length }}</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="content">
+        <div class="meta">Updated</div>
+        <div class="header">{{ registry.updated_at|default:'Not available' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ui vertical segment">
+    <h2 class="ui header">Version History</h2>
+    <p>Active model: <code>{{ registry.active_model|default:'/app/models/current/best.pt' }}</code></p>
+
+    <table class="ui celled table">
+      <thead>
+        <tr>
+          <th>Version</th>
+          <th>Status</th>
+          <th>Decision</th>
+          <th>mAP50-95</th>
+          <th>mAP50</th>
+          <th>Precision</th>
+          <th>Recall</th>
+          <th>Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in registry.versions %}
+        <tr>
+          <td><code>{{ item.version }}</code></td>
+          <td>{{ item.status|default:'unknown' }}</td>
+          <td>{{ item.decision|default:'-' }}</td>
+          <td>{{ item.map50_95|floatformat:4 }}</td>
+          <td>{{ item.map50|floatformat:4 }}</td>
+          <td>{{ item.precision|floatformat:4 }}</td>
+          <td>{{ item.recall|floatformat:4 }}</td>
+          <td>{{ item.updated_at|default:'-' }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8">No model versions found for this project yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

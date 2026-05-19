@@ -3,7 +3,10 @@
 import io
 import json
 import logging
+import mimetypes
 import os
+import csv
+from pathlib import Path
 from wsgiref.util import FileWrapper
 
 import pandas as pd
@@ -15,14 +18,19 @@ from core.utils.common import collect_versions
 from core.utils.io import find_file
 from django.conf import settings
 from django.contrib.auth import logout
-from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
-from django.shortcuts import redirect, render, reverse
+from django.contrib.auth.decorators import login_required
+from django.http import FileResponse, HttpResponse, HttpResponseForbidden, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render, reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from drf_spectacular.utils import extend_schema
+from projects.models import Project
 from rest_framework.views import APIView
 
 logger = logging.getLogger(__name__)
+
+MODEL_REGISTRY_ROOT = Path(os.getenv('MODEL_REGISTRY', '/models/registry'))
+ACTIVE_MODEL_METADATA = Path(os.getenv('ACTIVE_MODEL_METADATA', '/models/current/version.json'))
 
 
 _PARAGRAPH_SAMPLE = None
@@ -44,6 +52,141 @@ def main(request):
 
     # not authenticated
     return redirect(reverse('user-login'))
+
+
+def _read_json(path, default=None):
+    if not path.exists():
+        return default
+    try:
+        with path.open() as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        logger.exception('Failed to read JSON dashboard file: %s', path)
+        return default
+
+
+def _version_project_id(version):
+    root = _version_dir(version)
+    if not root:
+        return None
+    status = _read_json(root / 'status.json', {}) or {}
+    training_config = _read_json(root / 'training_config.json', {}) or {}
+    return status.get('project_id') or training_config.get('project_id')
+
+
+def _model_registry_index(project=None):
+    index = _read_json(MODEL_REGISTRY_ROOT / 'index.json', {}) or {}
+    versions = index.get('versions') or []
+    enriched_versions = []
+    for item in versions:
+        item = dict(item)
+        item['project_id'] = item.get('project_id') or _version_project_id(item.get('version'))
+        if project is not None and item.get('project_id') != project.id:
+            continue
+        enriched_versions.append(item)
+    index['versions'] = sorted(
+        enriched_versions,
+        key=lambda item: item.get('updated_at') or item.get('version') or '',
+        reverse=True,
+    )
+    if project is not None and index.get('current_version'):
+        current_project_id = _version_project_id(index['current_version'])
+        if current_project_id != project.id:
+            index['current_version'] = None
+    index['active_metadata'] = _read_json(ACTIVE_MODEL_METADATA, {}) or {}
+    return index
+
+
+def _version_dir(version):
+    path = (MODEL_REGISTRY_ROOT / version).resolve()
+    root = MODEL_REGISTRY_ROOT.resolve()
+    if root not in path.parents and path != root:
+        return None
+    if not path.is_dir():
+        return None
+    return path
+
+
+def _model_version_detail(version):
+    root = _version_dir(version)
+    if not root:
+        return None
+    return {
+        'version': version,
+        'metrics': _read_json(root / 'metrics.json', {}) or {},
+        'comparison': _read_json(root / 'comparison.json', {}) or {},
+        'status': _read_json(root / 'status.json', {}) or {},
+        'training_config': _read_json(root / 'training_config.json', {}) or {},
+        'results': _read_results_csv(root / 'training' / 'results.csv'),
+        'artifacts': _collect_model_artifacts(root),
+    }
+
+
+def _read_results_csv(path):
+    if not path.exists():
+        return []
+    try:
+        with path.open(newline='') as f:
+            return [{key.strip().replace('/', '_'): value for key, value in row.items()} for row in csv.DictReader(f)]
+    except OSError:
+        logger.exception('Failed to read model training CSV: %s', path)
+        return []
+
+
+def _collect_model_artifacts(root):
+    artifact_names = [
+        'training/results.png',
+        'training/confusion_matrix.png',
+        'training/confusion_matrix_normalized.png',
+        'training/PR_curve.png',
+        'training/F1_curve.png',
+        'training/P_curve.png',
+        'training/R_curve.png',
+        'evaluation_new/confusion_matrix.png',
+        'evaluation_new/confusion_matrix_normalized.png',
+        'evaluation_current/confusion_matrix.png',
+        'evaluation_current/confusion_matrix_normalized.png',
+    ]
+    artifacts = []
+    for name in artifact_names:
+        path = root / name
+        if path.exists():
+            artifacts.append(
+                {
+                    'name': name,
+                    'url': f'/api/custom-dashboard/models/{root.name}/artifacts/{name}',
+                }
+            )
+    return artifacts
+
+
+@login_required
+def dashboard_model_api(request, version=None):
+    project = None
+    project_id = request.GET.get('project')
+    if project_id:
+        project = get_object_or_404(Project, pk=project_id, organization=request.user.active_organization)
+
+    if version:
+        detail = _model_version_detail(version)
+        if detail is None:
+            return JsonResponse({'detail': 'Version not found'}, status=404)
+        return JsonResponse(detail)
+    return JsonResponse(_model_registry_index(project))
+
+
+@login_required
+def dashboard_model_artifact(request, version, artifact_path):
+    root = _version_dir(version)
+    if not root:
+        return JsonResponse({'detail': 'Version not found'}, status=404)
+
+    path = (root / artifact_path).resolve()
+    if root.resolve() not in path.parents or not path.exists() or not path.is_file():
+        return JsonResponse({'detail': 'Artifact not found'}, status=404)
+
+    content_type = mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
+    return FileResponse(path.open('rb'), content_type=content_type)
 
 
 def version_page(request):

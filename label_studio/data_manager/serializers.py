@@ -459,6 +459,8 @@ class DataManagerTaskSerializer(TaskSerializer):
     avg_lead_time = serializers.FloatField(required=False)
     draft_exists = serializers.BooleanField(required=False)
     updated_by = UpdatedByDMFieldSerializer(required=False, read_only=True)
+    assignment_assigned_to_email = serializers.SerializerMethodField(required=False)
+    assignment_status = serializers.SerializerMethodField(required=False)
     state = FSMStateField(read_only=True)  # FSM state - automatically uses annotation if present
 
     CHAR_LIMITS = 500
@@ -484,6 +486,16 @@ class DataManagerTaskSerializer(TaskSerializer):
         ):
             ret.pop('state', None)
         return ret
+
+    def get_assignment_assigned_to_email(self, task):
+        assignment = (task.meta or {}).get('assignment') or {}
+        return assignment.get('assigned_to_email') or ''
+
+    def get_assignment_status(self, task):
+        if task.is_labeled or task.total_annotations > 0:
+            return 'completed'
+        assignment = (task.meta or {}).get('assignment') or {}
+        return assignment.get('status') or 'unassigned'
 
     def _pretty_results(self, task, field, unique=False):
         if not hasattr(task, field) or getattr(task, field) is None:
@@ -573,7 +585,25 @@ class DataManagerTaskSerializer(TaskSerializer):
 
         annotators = list(set(annotators))
         annotators = [a for a in annotators if a is not None]
-        return annotators if hasattr(obj, 'annotators') and annotators else []
+        users = User.objects.filter(id__in=annotators)
+        users_by_id = {user.id: user for user in users}
+        return [
+            {
+                'user_id': user.id,
+                'first_name': user.first_name or '',
+                'last_name': user.last_name or '',
+                'username': user.username or '',
+                'email': user.email or '',
+                'last_activity': user.last_activity.isoformat() if user.last_activity else '',
+                'avatar': user.avatar_url,
+                'initials': user.get_initials(),
+                'annotated': True,
+                'review': None,
+                'reviewed': False,
+            }
+            for user_id in annotators
+            if (user := users_by_id.get(user_id)) is not None
+        ]
 
     def get_annotations_ids(self, task):
         return self._pretty_results(task, 'annotations_ids', unique=True)

@@ -23,6 +23,8 @@ export const API_CONFIG = {
     createProject: "POST:/projects",
     deleteProject: "DELETE:/projects/:pk",
     projectResetCache: "POST:/projects/:pk/summary/reset",
+    customDashboardModels: "/custom-dashboard/models",
+    customDashboardModel: "/custom-dashboard/models/:version",
 
     // Presigning
     presignUrlForTask: "/../tasks/:taskID/presign",
