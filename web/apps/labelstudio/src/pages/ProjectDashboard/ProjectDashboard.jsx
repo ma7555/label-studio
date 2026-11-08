@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Button, buttonVariant, SimpleCard, Spinner, Typography } from "@humansignal/ui";
 import { useUpdatePageTitle } from "@humansignal/core";
@@ -15,32 +15,47 @@ export const ProjectDashboardPage = () => {
 
   useUpdatePageTitle(project?.title ? `${project.title} Dashboard` : "Project Dashboard");
 
+  const loadRegistry = useCallback(async ({ silent = false } = {}) => {
+    if (!project?.id) return null;
+    if (!silent) setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.callApi("customDashboardModels", {
+        params: { project: project.id },
+      });
+      setRegistry(response);
+      return response;
+    } catch (err) {
+      setError(err);
+      return null;
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [api, project?.id]);
+
   useEffect(() => {
     let cancelled = false;
-
-    const load = async () => {
-      if (!project?.id) return;
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await api.callApi("customDashboardModels", {
-          params: { project: project.id },
-        });
-        if (!cancelled) setRegistry(response);
-      } catch (err) {
-        if (!cancelled) setError(err);
-      } finally {
-        if (!cancelled) setLoading(false);
+    let timer;
+    const tick = async () => {
+      if (cancelled) return;
+      const response = await loadRegistry({ silent: true });
+      if (cancelled) return;
+      if (hasActiveTraining(response)) {
+        timer = setTimeout(tick, 5000);
       }
     };
-
-    load();
-
+    loadRegistry().then((response) => {
+      if (cancelled) return;
+      if (hasActiveTraining(response)) {
+        timer = setTimeout(tick, 5000);
+      }
+    });
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [api, project?.id]);
+  }, [loadRegistry]);
 
   if (loading) return <Loading />;
 
@@ -81,6 +96,8 @@ export const ProjectDashboardPage = () => {
         <MetricCard title="Updated" value={registry?.updated_at ?? "Not available"} />
       </div>
 
+      <TrainingProgress versions={versions} projectId={project?.id} />
+
       <SimpleCard
         title="Version History"
         description={
@@ -102,6 +119,7 @@ export const ProjectDashboardPage = () => {
             columns={[
               "Version",
               "Status",
+              "Progress",
               "Decision",
               "mAP50-95",
               "mAP50",
@@ -114,6 +132,7 @@ export const ProjectDashboardPage = () => {
                 {item.version}
               </Link>,
               <StatusBadge status={item.status} />,
+              <ProgressCell progress={item.progress} />,
               item.decision ?? "-",
               formatMetric(item.map50_95),
               formatMetric(item.map50),
@@ -134,35 +153,52 @@ export const ProjectModelVersionPage = ({ version }) => {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useUpdatePageTitle(version ? `${version} Metrics` : "Model Version");
 
+  const loadDetail = useCallback(async ({ silent = false } = {}) => {
+    if (!version) return null;
+    if (!silent) setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.callApi("customDashboardModel", {
+        params: { version },
+      });
+      setDetail(response);
+      return response;
+    } catch (err) {
+      setError(err);
+      return null;
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [api, version]);
+
   useEffect(() => {
     let cancelled = false;
-
-    const load = async () => {
-      if (!version) return;
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await api.callApi("customDashboardModel", {
-          params: { version },
-        });
-        if (!cancelled) setDetail(response);
-      } catch (err) {
-        if (!cancelled) setError(err);
-      } finally {
-        if (!cancelled) setLoading(false);
+    let timer;
+    const active = (resp) => resp?.progress?.status === "training" || resp?.status?.status === "training";
+    const tick = async () => {
+      if (cancelled) return;
+      const response = await loadDetail({ silent: true });
+      if (cancelled) return;
+      if (active(response)) {
+        timer = setTimeout(tick, 5000);
       }
     };
-
-    load();
-
+    loadDetail().then((response) => {
+      if (cancelled) return;
+      if (active(response)) {
+        timer = setTimeout(tick, 5000);
+      }
+    });
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [api, version]);
+  }, [loadDetail]);
 
   if (loading) return <Loading />;
 
@@ -180,6 +216,25 @@ export const ProjectModelVersionPage = ({ version }) => {
 
   const results = detail.results ?? [];
   const resultRows = results.slice(-10);
+  const canDelete = detail.status?.status !== "training";
+
+  const deleteModel = async () => {
+    const confirmation = window.prompt(`This will permanently delete ${version} from disk. Type DELETE to continue.`);
+    if (!confirmation || confirmation.toLowerCase() !== "delete") return;
+
+    setDeleting(true);
+    try {
+      await api.callApi("customDashboardModelDelete", {
+        params: { version },
+        body: { confirmation },
+      });
+      window.location.href = `/projects/${project?.id}/dashboard`;
+    } catch (err) {
+      window.alert(err?.detail || err?.message || "Failed to delete model version");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <main className="p-6 flex flex-col gap-6">
@@ -192,9 +247,19 @@ export const ProjectModelVersionPage = ({ version }) => {
             {detail.comparison?.reason ?? detail.status?.status ?? "Model version details"}
           </Typography>
         </div>
-        <Link className={buttonVariant({ look: "outlined" })} to={`/projects/${project?.id}/dashboard`} aria-label="Back to dashboard">
-          Back to Dashboard
-        </Link>
+        <div className="flex gap-2">
+          <Link className={buttonVariant({ look: "outlined" })} to={`/projects/${project?.id}/dashboard`} aria-label="Back to dashboard">
+            Back to Dashboard
+          </Link>
+          <Button
+            look="destructive"
+            disabled={!canDelete || deleting}
+            onClick={deleteModel}
+            aria-label="Delete model version"
+          >
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-4 max-[1100px]:grid-cols-2 max-[700px]:grid-cols-1">
@@ -203,6 +268,12 @@ export const ProjectModelVersionPage = ({ version }) => {
         <MetricCard title="Precision" value={formatMetric(detail.metrics?.precision)} />
         <MetricCard title="Recall" value={formatMetric(detail.metrics?.recall)} />
       </div>
+
+      {detail.progress?.status === "training" && (
+        <SimpleCard title="Training Progress">
+          <TrainingProgressBar progress={detail.progress} />
+        </SimpleCard>
+      )}
 
       <SimpleCard title="Version Details">
         <div className="grid grid-cols-3 gap-4 max-[1100px]:grid-cols-1">
@@ -341,6 +412,67 @@ const StatusBadge = ({ status }) => {
       {normalized}
     </Badge>
   );
+};
+
+const TrainingProgress = ({ versions, projectId }) => {
+  const active = versions.filter((item) => item.progress?.status === "training" || item.status === "training");
+
+  if (active.length === 0) return null;
+
+  return (
+    <SimpleCard title="Training In Progress">
+      <div className="flex flex-col gap-4">
+        {active.map((item) => (
+          <div key={item.version} className="flex flex-col gap-2">
+            <div className="flex justify-between gap-4">
+              <Link to={`/projects/${projectId}/dashboard/${item.version}`} className="text-primary-link hover:underline font-mono">
+                {item.version}
+              </Link>
+              <Typography size="small" className="text-neutral-content-subtler">
+                {formatEpoch(item.progress)}
+              </Typography>
+            </div>
+            <TrainingProgressBar progress={item.progress} />
+          </div>
+        ))}
+      </div>
+    </SimpleCard>
+  );
+};
+
+const ProgressCell = ({ progress }) => {
+  if (!progress || progress.progress_percent === null || progress.progress_percent === undefined) return "-";
+  return `${progress.progress_percent}% ${formatEpoch(progress)}`;
+};
+
+const TrainingProgressBar = ({ progress }) => {
+  const percent = Math.max(0, Math.min(100, Number(progress?.progress_percent ?? 0)));
+  const latest = progress?.latest ?? {};
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="h-2 rounded bg-neutral-emphasis-subtle overflow-hidden">
+        <div className="h-full bg-primary-content" style={{ width: `${percent}%` }} />
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-neutral-content-subtler">
+        <span>{percent}%</span>
+        <span>{formatEpoch(progress)}</span>
+        {progress?.phase && <span>Phase: {progress.phase}</span>}
+        {progress?.message && <span>{progress.message}</span>}
+        {latest.metrics_mAP50B && <span>mAP50: {latest.metrics_mAP50B}</span>}
+        {latest.metrics_mAP50_95B && <span>mAP50-95: {latest.metrics_mAP50_95B}</span>}
+      </div>
+    </div>
+  );
+};
+
+const formatEpoch = (progress) => {
+  if (!progress?.total_epochs) return "";
+  return `Epoch ${progress.current_epoch ?? 0}/${progress.total_epochs}`;
+};
+
+const hasActiveTraining = (registry) => {
+  return (registry?.versions ?? []).some((item) => item.progress?.status === "training" || item.status === "training");
 };
 
 const DetailGroup = ({ title, rows }) => {

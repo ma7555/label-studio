@@ -6,6 +6,7 @@ import logging
 import mimetypes
 import os
 import csv
+import shutil
 from pathlib import Path
 from wsgiref.util import FileWrapper
 
@@ -29,8 +30,7 @@ from rest_framework.views import APIView
 
 logger = logging.getLogger(__name__)
 
-MODEL_REGISTRY_ROOT = Path(os.getenv('MODEL_REGISTRY', '/models/registry'))
-ACTIVE_MODEL_METADATA = Path(os.getenv('ACTIVE_MODEL_METADATA', '/models/current/version.json'))
+MODEL_REGISTRY_ROOT = Path(os.getenv('MODEL_REGISTRY', '/models/projects'))
 
 
 _PARAGRAPH_SAMPLE = None
@@ -66,40 +66,93 @@ def _read_json(path, default=None):
 
 
 def _version_project_id(version):
-    root = _version_dir(version)
-    if not root:
+    """Parse the project ID from a version name (yolo-p<ID>-<timestamp>)."""
+    try:
+        return int(version.split('-')[1].lstrip('p'))
+    except (AttributeError, IndexError, ValueError):
         return None
-    status = _read_json(root / 'status.json', {}) or {}
-    training_config = _read_json(root / 'training_config.json', {}) or {}
-    return status.get('project_id') or training_config.get('project_id')
 
 
-def _model_registry_index(project=None):
-    index = _read_json(MODEL_REGISTRY_ROOT / 'index.json', {}) or {}
-    versions = index.get('versions') or []
+def _project_registry(project_id):
+    if project_id is None:
+        return None
+    return MODEL_REGISTRY_ROOT / f'p{project_id}' / 'registry'
+
+
+def _project_version_project(request, version):
+    """Resolve the project owning a model version, enforcing organization access."""
+    project_id = _version_project_id(version)
+    if project_id is None:
+        return None
+    return Project.objects.filter(pk=project_id, organization=request.user.active_organization).first()
+
+
+def _model_registry_index(project):
+    registry = _project_registry(project.id)
+    index = {}
+    versions_by_name = {}
+
+    if registry:
+        stored_index = _read_json(registry / 'index.json', {}) or {}
+        for key in ('current_version', 'promotion_metric', 'promotion_min_delta', 'updated_at', 'active_model'):
+            index[key] = stored_index.get(key)
+        for item in stored_index.get('versions') or []:
+            if item.get('version'):
+                versions_by_name[item['version']] = dict(item)
+
+        if registry.exists():
+            for version_dir in registry.iterdir():
+                if not version_dir.is_dir():
+                    continue
+                version = version_dir.name
+                status = _read_json(version_dir / 'status.json', {}) or {}
+                metrics = _read_json(version_dir / 'metrics.json', {}) or {}
+                comparison = _read_json(version_dir / 'comparison.json', {}) or {}
+                versions_by_name[version] = {
+                    **versions_by_name.get(version, {}),
+                    'version': version,
+                    'status': status.get('status') or versions_by_name.get(version, {}).get('status'),
+                    'promoted': status.get('promoted', versions_by_name.get(version, {}).get('promoted', False)),
+                    'updated_at': status.get('updated_at') or status.get('created_at') or versions_by_name.get(version, {}).get('updated_at'),
+                    'fitness': metrics.get('fitness'),
+                    'map50': metrics.get('map50'),
+                    'map50_95': metrics.get('map50_95'),
+                    'precision': metrics.get('precision'),
+                    'recall': metrics.get('recall'),
+                    'decision': comparison.get('decision'),
+                    'reason': comparison.get('reason'),
+                }
+
+    current_best = registry.parent / 'current' / 'best.pt' if registry else None
+    index['active_metadata'] = (
+        _read_json(registry.parent / 'current' / 'version.json', {}) or {}
+        if current_best and current_best.exists() else {}
+    )
+
+    versions = list(versions_by_name.values())
     enriched_versions = []
     for item in versions:
         item = dict(item)
         item['project_id'] = item.get('project_id') or _version_project_id(item.get('version'))
-        if project is not None and item.get('project_id') != project.id:
-            continue
+        root = _version_dir(item.get('version'))
+        if root:
+            item['progress'] = _model_training_progress(root)
         enriched_versions.append(item)
     index['versions'] = sorted(
         enriched_versions,
         key=lambda item: item.get('updated_at') or item.get('version') or '',
         reverse=True,
     )
-    if project is not None and index.get('current_version'):
-        current_project_id = _version_project_id(index['current_version'])
-        if current_project_id != project.id:
-            index['current_version'] = None
-    index['active_metadata'] = _read_json(ACTIVE_MODEL_METADATA, {}) or {}
     return index
 
 
 def _version_dir(version):
-    path = (MODEL_REGISTRY_ROOT / version).resolve()
-    root = MODEL_REGISTRY_ROOT.resolve()
+    project_id = _version_project_id(version)
+    registry = _project_registry(project_id)
+    if registry is None:
+        return None
+    path = (registry / version).resolve()
+    root = registry.resolve()
     if root not in path.parents and path != root:
         return None
     if not path.is_dir():
@@ -119,6 +172,32 @@ def _model_version_detail(version):
         'training_config': _read_json(root / 'training_config.json', {}) or {},
         'results': _read_results_csv(root / 'training' / 'results.csv'),
         'artifacts': _collect_model_artifacts(root),
+        'progress': _model_training_progress(root),
+    }
+
+
+def _model_training_progress(root):
+    status = _read_json(root / 'status.json', {}) or {}
+    training_config = _read_json(root / 'training_config.json', {}) or {}
+    results = _read_results_csv(root / 'training' / 'results.csv')
+    total_epochs = training_config.get('epochs')
+    current_epoch = len(results)
+
+    progress_percent = status.get('progress_percent')
+    if progress_percent is None and total_epochs:
+        progress_percent = min(100, round((current_epoch / max(1, total_epochs)) * 100))
+    if progress_percent is None:
+        progress_percent = 0 if status.get('status') == 'training' else None
+
+    latest = results[-1] if results else {}
+    return {
+        'status': status.get('status'),
+        'phase': status.get('phase') or ('training' if status.get('status') == 'training' else None),
+        'message': status.get('message'),
+        'current_epoch': status.get('current_epoch') or current_epoch,
+        'total_epochs': status.get('total_epochs') or total_epochs,
+        'progress_percent': progress_percent,
+        'latest': latest,
     }
 
 
@@ -162,21 +241,26 @@ def _collect_model_artifacts(root):
 
 @login_required
 def dashboard_model_api(request, version=None):
-    project = None
-    project_id = request.GET.get('project')
-    if project_id:
-        project = get_object_or_404(Project, pk=project_id, organization=request.user.active_organization)
-
     if version:
+        project = _project_version_project(request, version)
+        if project is None:
+            return JsonResponse({'detail': 'Version not found'}, status=404)
         detail = _model_version_detail(version)
         if detail is None:
             return JsonResponse({'detail': 'Version not found'}, status=404)
         return JsonResponse(detail)
+
+    project_id = request.GET.get('project')
+    if not project_id:
+        return JsonResponse({'detail': 'A project query parameter is required'}, status=400)
+    project = get_object_or_404(Project, pk=project_id, organization=request.user.active_organization)
     return JsonResponse(_model_registry_index(project))
 
 
 @login_required
 def dashboard_model_artifact(request, version, artifact_path):
+    if _project_version_project(request, version) is None:
+        return JsonResponse({'detail': 'Version not found'}, status=404)
     root = _version_dir(version)
     if not root:
         return JsonResponse({'detail': 'Version not found'}, status=404)
@@ -187,6 +271,30 @@ def dashboard_model_artifact(request, version, artifact_path):
 
     content_type = mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
     return FileResponse(path.open('rb'), content_type=content_type)
+
+
+@login_required
+@require_http_methods(['POST', 'DELETE'])
+def dashboard_model_delete(request, version):
+    if _project_version_project(request, version) is None:
+        return JsonResponse({'detail': 'Version not found'}, status=404)
+    root = _version_dir(version)
+    if not root:
+        return JsonResponse({'detail': 'Version not found'}, status=404)
+
+    try:
+        body = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid request body'}, status=400)
+    if body.get('confirmation') != 'DELETE':
+        return JsonResponse({'detail': 'Confirmation must be "DELETE"'}, status=400)
+
+    status = _read_json(root / 'status.json', {}) or {}
+    if status.get('status') == 'training':
+        return JsonResponse({'detail': 'Cannot delete a version while it is training'}, status=409)
+
+    shutil.rmtree(root)
+    return JsonResponse({'status': 'deleted', 'version': version})
 
 
 def version_page(request):

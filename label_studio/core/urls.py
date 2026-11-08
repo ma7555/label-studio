@@ -37,6 +37,16 @@ urlpatterns = [
     path('api/custom-dashboard/models/', views.dashboard_model_api, name='custom-dashboard-models'),
     path('api/custom-dashboard/models/<str:version>/', views.dashboard_model_api, name='custom-dashboard-model'),
     path(
+        'api/custom-dashboard/models/<str:version>/delete',
+        views.dashboard_model_delete,
+        name='custom-dashboard-model-delete',
+    ),
+    path(
+        'api/custom-dashboard/models/<str:version>/delete/',
+        views.dashboard_model_delete,
+        name='custom-dashboard-model-delete-slash',
+    ),
+    path(
         'api/custom-dashboard/models/<str:version>/artifacts/<path:artifact_path>',
         views.dashboard_model_artifact,
         name='custom-dashboard-model-artifact',
