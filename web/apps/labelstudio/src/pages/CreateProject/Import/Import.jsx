@@ -449,7 +449,7 @@ export const ImportPage = ({
                           Video
                           <Tooltip title="Video format support depends on your browser. Click to learn more.">
                             <a
-                              href="https://labelstud.io/tags/video#Video-format"
+                              href="/documentation"
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center"
@@ -476,7 +476,7 @@ export const ImportPage = ({
                         <li>
                           We recommend{" "}
                           <a
-                            href="https://labelstud.io/guide/storage.html"
+                            href="/documentation"
                             target="_blank"
                             rel="noopener noreferrer"
                             aria-label="Cloud Storage documentation (opens in a new tab)"
@@ -485,7 +485,7 @@ export const ImportPage = ({
                           </a>{" "}
                           over direct uploads due to{" "}
                           <a
-                            href="https://labelstud.io/guide/tasks.html#Import-data-from-the-Label-Studio-UI"
+                            href="/documentation"
                             target="_blank"
                             rel="noopener noreferrer"
                             aria-label="Upload limitations documentation (opens in a new tab)"
@@ -497,7 +497,7 @@ export const ImportPage = ({
                         <li>
                           For PDFs, use{" "}
                           <a
-                            href="https://labelstud.io/templates/multi-page-document-annotation"
+                            href="/documentation"
                             target="_blank"
                             rel="noopener noreferrer"
                             aria-label="Multi-image labeling documentation (opens in a new tab)"
@@ -508,7 +508,7 @@ export const ImportPage = ({
                         </li>
                         <li>
                           Check the documentation to{" "}
-                          <a target="_blank" href="https://labelstud.io/guide/predictions.html" rel="noreferrer">
+                          <a target="_blank" href="/documentation" rel="noreferrer">
                             import preannotated data
                           </a>
                           .

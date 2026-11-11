@@ -124,7 +124,7 @@ export const MachineLearningSettings = () => {
                 !window.APP_SETTINGS?.whitelabel_is_active && (
                   <Typography variant="label" size="small" className="text-primary-link">
                     <a
-                      href="https://labelstud.io/guide/ml"
+                      href="/documentation"
                       target="_blank"
                       rel="noopener noreferrer"
                       data-testid="ml-help-link"

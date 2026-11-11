@@ -1,4 +1,4 @@
-import { IconExternal, IconFolderAdd, IconHumanSignal, IconUserAdd, IconFolderOpen } from "@humansignal/icons";
+import { IconFolderAdd, IconUserAdd, IconFolderOpen } from "@humansignal/icons";
 import { Button, SimpleCard, Spinner, Tooltip, Typography } from "@humansignal/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
@@ -22,24 +22,28 @@ import {
 
 const resources = [
   {
-    title: "Documentation",
-    url: "https://labelstud.io/guide/",
+    title: "Getting started",
+    url: "/documentation/getting-started",
   },
   {
-    title: "API Documentation",
-    url: "https://api.labelstud.io/api-reference/introduction/getting-started",
+    title: "Annotation vs pre-annotation",
+    url: "/documentation/labeling",
   },
   {
-    title: "Release Notes",
-    url: "https://labelstud.io/learn/categories/release-notes/",
+    title: "Training hyperparameters",
+    url: "/documentation/hyperparameters",
   },
   {
-    title: "LabelStud.io Blog",
-    url: "https://labelstud.io/blog/",
+    title: "Model versions and promotion",
+    url: "/documentation/model-versions",
   },
   {
-    title: "Slack Community",
-    url: "https://slack.labelstud.io",
+    title: "Evaluation dataset",
+    url: "/documentation/evaluation-dataset",
+  },
+  {
+    title: "Task assignment",
+    url: "/documentation/task-assignment",
   },
 ];
 
@@ -212,23 +216,16 @@ export const HomePage: Page = () => {
               {resources.map((link) => {
                 return (
                   <li key={link.title}>
-                    <a
-                      href={link.url}
-                      className="py-2 px-1 flex justify-between items-center text-neutral-content"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <Link to={link.url} className="py-2 px-1 flex justify-between items-center text-neutral-content">
                       {link.title}
-                      <IconExternal className="text-primary-icon" />
-                    </a>
+                    </Link>
                   </li>
                 );
               })}
             </ul>
           </SimpleCard>
           <div className="flex gap-2 items-center">
-            <IconHumanSignal />
-            <span className="text-neutral-content-subtle">Label Studio Version: Community</span>
+            <span className="text-neutral-content-subtle">AutoLearner Version: Community</span>
           </div>
         </section>
       </div>

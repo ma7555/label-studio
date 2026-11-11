@@ -44,7 +44,7 @@ export const VersionProvider = ({ children }) => {
 
 export const VersionNotifier = ({ showNewVersion, showCurrentVersion }) => {
   const { newVersion, updateTime, latestVersion, version } = useContext(VersionContext) ?? {};
-  const url = `https://labelstud.io/redirect/update?version=${version}`;
+  const url = "/documentation";
 
   return newVersion && showNewVersion ? (
     <li className={cn("version-notifier").toClassName()}>

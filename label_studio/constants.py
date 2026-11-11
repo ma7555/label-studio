@@ -162,3 +162,18 @@ SAFE_HTML_TAGS = [
     'slot',
     'template',
 ]
+
+# Optimizers supported by Ultralytics for the auto learner training.
+# 'auto' lets Ultralytics pick the optimizer and derive its own learning rate,
+# which means any user-supplied learning rate is ignored.
+TRAIN_OPTIMIZERS = (
+    'auto',
+    'Adam',
+    'Adamax',
+    'AdamW',
+    'NAdam',
+    'RAdam',
+    'RMSProp',
+    'SGD',
+    'MuSGD',
+)

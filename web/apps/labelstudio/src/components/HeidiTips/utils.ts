@@ -3,8 +3,10 @@ import type { Tip, TipsCollection } from "./types";
 
 const STORE_KEY = "heidi_ignored_tips";
 const EVENT_NAMESPACE_KEY = "heidi_tips";
-const CACHE_KEY = "heidi_live_tips_collection";
-const CACHE_FETCHED_AT_KEY = "heidi_live_tips_collection_fetched_at";
+// Versioned cache keys: bumping the suffix invalidates any previously cached
+// third-party tips so they are never shown again.
+const CACHE_KEY = "autolearner_tips_collection_v2";
+const CACHE_FETCHED_AT_KEY = "autolearner_tips_collection_fetched_at_v2";
 const CACHE_STALE_TIME = 1000 * 60 * 60; // 1 hour
 const MAX_TIMEOUT = 5000; // 5 seconds
 

@@ -1,6 +1,6 @@
 {
-  "short_name": "Label Studio",
-  "name": "Label Studio Sample",
+  "short_name": "AutoLearner",
+  "name": "AutoLearner Sample",
   "icons": [
     {
       "src": "favicon.ico",

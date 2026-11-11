@@ -47,6 +47,24 @@ declare type APIProject = {
   /** Minimum number of completed tasks after which model training is started */
   min_annotations_to_start_training?: number;
 
+  /** Number of epochs used when the auto learner trains a model */
+  training_epochs?: number;
+
+  /** Batch size used when the auto learner trains a model; unset means the model default */
+  training_batch_size?: number | null;
+
+  /** Learning rate used when the auto learner trains a model; unset means the model default */
+  training_learning_rate?: number | null;
+
+  /** Image size in pixels used when the auto learner trains a model; unset means the model default */
+  training_imgsz?: number | null;
+
+  /** Optimizer used when the auto learner trains a model; "auto" lets Ultralytics choose */
+  training_optimizer?: string;
+
+  /** Fraction of the training dataset to use, between 0 and 1; 1 uses all data */
+  training_fraction?: number | null;
+
   /** If set, the annotator can view model predictions */
   show_collab_predictions?: boolean;
   num_tasks_with_annotations?: string;

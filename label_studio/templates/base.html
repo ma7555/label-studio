@@ -7,7 +7,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <meta name="author" content="Label Studio"/>
+  <meta name="author" content="AutoLearner"/>
   <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=0.9, shrink-to-fit=no">
 
@@ -61,7 +61,7 @@
   </script>
 
   {% block page_labeling %}
-    <title>Label Studio</title>
+    <title>{{ settings.APP_NAME }}</title>
     <link href="{{settings.HOSTNAME}}{% static 'images/favicon.ico' %}" rel="shortcut icon"/>
   {% endblock %}
 
@@ -195,12 +195,14 @@
     },
 
     {% block app_more_settings %}
-      page_title: "Label Studio",
+      page_title: "{{ settings.APP_NAME }}",
+      app_name: "{{ settings.APP_NAME }}",
       flags: {
         allow_organization_webhooks: {{settings.ALLOW_ORGANIZATION_WEBHOOKS|yesno:"true,false"}},
-        storage_persistence: {{ settings.STORAGE_PERSISTENCE|yesno:"true,false" }},
+        storage_persistence: {{ settings.STORAGE_PERSISTENCE|yesno:"true,false"}},
       },
     {% endblock %}
+
 
   }, {% block frontend_settings %}{}{% endblock %});
 </script>

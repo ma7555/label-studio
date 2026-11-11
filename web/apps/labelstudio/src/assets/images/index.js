@@ -1,3 +1,5 @@
 export { ReactComponent as HeidiSpeaking } from "./heidi-speaking.svg";
 export { ReactComponent as HeidiAi } from "./heidi-ai.svg";
 export { ReactComponent as LSLogo } from "./logo.svg";
+export { ReactComponent as AutoLearnerLogo } from "./autolearner-logo.svg";
+export { default as SeraLogo } from "./sera-logo.png";

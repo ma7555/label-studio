@@ -714,6 +714,31 @@ def annotate_draft_exists(queryset):
     return queryset.annotate(draft_exists=Exists(AnnotationDraft.objects.filter(task=OuterRef('pk'))))
 
 
+def annotate_assignment_assigned_to_email(queryset):
+    return queryset.annotate(
+        assignment_assigned_to_email=Coalesce(
+            KeyTextTransform('assigned_to_email', KeyTextTransform('assignment', 'meta')),
+            Value(''),
+            output_field=TextField(),
+        )
+    )
+
+
+def annotate_assignment_status(queryset):
+    status = Coalesce(
+        KeyTextTransform('status', KeyTextTransform('assignment', 'meta')),
+        Value('unassigned'),
+        output_field=TextField(),
+    )
+    return queryset.annotate(
+        assignment_status=Case(
+            When(Q(is_labeled=True) | Q(total_annotations__gt=0), then=Value('completed')),
+            default=status,
+            output_field=TextField(),
+        )
+    )
+
+
 def file_upload(queryset):
     return queryset.annotate(file_upload_field=F('file_upload__file'))
 
@@ -757,6 +782,8 @@ settings.DATA_MANAGER_ANNOTATIONS_MAP = {
     'file_upload': file_upload,
     'draft_exists': annotate_draft_exists,
     'storage_filename': annotate_storage_filename,
+    'assignment_assigned_to_email': annotate_assignment_assigned_to_email,
+    'assignment_status': annotate_assignment_status,
     'state': annotate_state,
 }
 

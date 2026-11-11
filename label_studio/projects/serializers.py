@@ -3,7 +3,7 @@
 from decimal import Decimal
 
 import bleach
-from constants import SAFE_HTML_ATTRIBUTES, SAFE_HTML_TAGS
+from constants import SAFE_HTML_ATTRIBUTES, SAFE_HTML_TAGS, TRAIN_OPTIMIZERS
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from fsm.serializer_fields import FSMStateField
@@ -227,7 +227,16 @@ class ProjectSerializer(FlexFieldsModelSerializer):
     def to_internal_value(self, data):
         # FIXME: remake this logic with start_training_on_annotation_update
         initial_data = data
-        data = super().to_internal_value(data)
+
+        # An empty string means "use the model default" for the optional training
+        # hyperparameters; normalize it before the field-level validation runs
+        if hasattr(initial_data, 'copy'):
+            initial_data = initial_data.copy()
+            for field in ('training_batch_size', 'training_learning_rate', 'training_imgsz', 'training_fraction'):
+                if field in initial_data and initial_data[field] == '':
+                    initial_data[field] = None
+
+        data = super().to_internal_value(initial_data)
 
         if 'start_training_on_annotation_update' in initial_data:
             data['min_annotations_to_start_training'] = int(initial_data['start_training_on_annotation_update'])
@@ -259,6 +268,56 @@ class ProjectSerializer(FlexFieldsModelSerializer):
             raise serializers.ValidationError('At least one tag must have a non-zero overall weight.')
         return value
 
+    def validate_training_epochs(self, value):
+        if value is None:
+            return value
+        if value < 1:
+            raise serializers.ValidationError('Epochs must be a positive number.')
+        return value
+
+    def validate_training_batch_size(self, value):
+        # An empty value means "use the model default"
+        if value in ('', None):
+            return None
+        if value < 1:
+            raise serializers.ValidationError('Batch size must be a positive number.')
+        return value
+
+    def validate_training_learning_rate(self, value):
+        # An empty value means "use the model default"
+        if value in ('', None):
+            return None
+        if value <= 0:
+            raise serializers.ValidationError('Learning rate must be a positive number.')
+        return value
+
+    def validate_training_imgsz(self, value):
+        # An empty value means "use the model default"
+        if value in ('', None):
+            return None
+        if value < 32:
+            raise serializers.ValidationError('Image size must be at least 32 pixels.')
+        return value
+
+    def validate_training_fraction(self, value):
+        # An empty value means "use the model default" (the full dataset)
+        if value in ('', None):
+            return None
+        if not 0 < value <= 1:
+            raise serializers.ValidationError('Training fraction must be greater than 0 and at most 1.')
+        return value
+
+    def validate_training_optimizer(self, value):
+        # An empty value means "let Ultralytics choose"
+        if value in ('', None):
+            return 'auto'
+        value = value.strip()
+        # Keep the canonical casing used by Ultralytics
+        for optimizer in TRAIN_OPTIMIZERS:
+            if optimizer.lower() == value.lower():
+                return optimizer
+        raise serializers.ValidationError(f'Optimizer must be one of: {", ".join(TRAIN_OPTIMIZERS)}.')
+
     class Meta:
         model = Project
         extra_kwargs = {
@@ -286,6 +345,12 @@ class ProjectSerializer(FlexFieldsModelSerializer):
             'created_at',
             'min_annotations_to_start_training',
             'start_training_on_annotation_update',
+            'training_epochs',
+            'training_batch_size',
+            'training_learning_rate',
+            'training_imgsz',
+            'training_optimizer',
+            'training_fraction',
             'show_collab_predictions',
             'num_tasks_with_annotations',
             'task_number',

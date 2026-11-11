@@ -34,6 +34,7 @@ from drf_spectacular.views import (
 
 urlpatterns = [
     re_path(r'^$', views.main, name='main'),
+    re_path(r'^documentation(?:/.*)?$', views.documentation_page, name='documentation'),
     path('api/custom-dashboard/models/', views.dashboard_model_api, name='custom-dashboard-models'),
     path('api/custom-dashboard/models/<str:version>/', views.dashboard_model_api, name='custom-dashboard-model'),
     path(
@@ -47,9 +48,34 @@ urlpatterns = [
         name='custom-dashboard-model-delete-slash',
     ),
     path(
+        'api/custom-dashboard/models/<str:version>/re-evaluate',
+        views.dashboard_model_re_evaluate,
+        name='custom-dashboard-model-re-evaluate',
+    ),
+    path(
+        'api/custom-dashboard/models/<str:version>/re-evaluate/',
+        views.dashboard_model_re_evaluate,
+        name='custom-dashboard-model-re-evaluate-slash',
+    ),
+    path(
         'api/custom-dashboard/models/<str:version>/artifacts/<path:artifact_path>',
         views.dashboard_model_artifact,
         name='custom-dashboard-model-artifact',
+    ),
+    path(
+        'api/custom-dashboard/models/<str:version>/download',
+        views.dashboard_model_download,
+        name='custom-dashboard-model-download',
+    ),
+    path(
+        'api/custom-dashboard/projects/<int:project_id>/eval-dataset/',
+        views.dashboard_eval_dataset,
+        name='custom-dashboard-eval-dataset',
+    ),
+    path(
+        'api/custom-dashboard/projects/<int:project_id>/eval-dataset/files/<path:filename>',
+        views.dashboard_eval_dataset_file,
+        name='custom-dashboard-eval-dataset-file',
     ),
     re_path(r'^sw\.js$', views.static_file_with_host_resolver('js/sw.js', content_type='text/javascript')),
     re_path(

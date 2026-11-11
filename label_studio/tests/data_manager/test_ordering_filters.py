@@ -478,3 +478,71 @@ def test_views_filters(filters, ids, business_client, project_id):
     response_ids = [task['id'] for task in response_data['tasks']]
     correct_ids = [task_ids[i] for i in ids]
     assert response_ids == correct_ids, (response_ids, correct_ids, filters)
+
+
+@pytest.mark.django_db
+def test_views_filters_and_ordering_assignment_columns():
+    """Filtering/ordering by the virtual assignment columns must resolve via DM annotations."""
+    project = ProjectFactory()
+    user = project.created_by
+
+    task_assigned = TaskFactory(
+        project=project,
+        meta={'assignment': {'assigned_to_email': 'ann@example.com', 'status': 'assigned'}},
+    )
+    task_completed = TaskFactory(
+        project=project,
+        is_labeled=True,
+        meta={'assignment': {'assigned_to_email': 'zed@example.com', 'status': 'assigned'}},
+    )
+    task_unassigned = TaskFactory(project=project)
+
+    api_client = APIClient()
+    api_client.force_authenticate(user=user)
+
+    def get_tasks(data):
+        response = api_client.post('/api/dm/views/', data={'project': project.id, 'data': data}, format='json')
+        assert response.status_code == 201, response.content
+        view_id = response.json()['id']
+
+        response = api_client.get(f'/api/tasks?view={view_id}')
+        assert response.status_code == 200, response.content
+        return response.json()['tasks']
+
+    def filter_by(column, operator, value):
+        return get_tasks(
+            {
+                'filters': {
+                    'conjunction': 'or',
+                    'items': [
+                        {'filter': f'filter:tasks:{column}', 'operator': operator, 'type': 'String', 'value': value}
+                    ],
+                }
+            }
+        )
+
+    # Assigned To (string filter)
+    tasks = filter_by('assignment_assigned_to_email', 'contains', 'ann@example.com')
+    assert [t['id'] for t in tasks] == [task_assigned.id]
+    assert tasks[0]['assignment_assigned_to_email'] == 'ann@example.com'
+
+    # Assignment Status derived from meta
+    tasks = filter_by('assignment_status', 'equal', 'assigned')
+    assert [t['id'] for t in tasks] == [task_assigned.id]
+
+    # Unassigned tasks have no assignment entry
+    tasks = filter_by('assignment_status', 'equal', 'unassigned')
+    assert [t['id'] for t in tasks] == [task_unassigned.id]
+    assert tasks[0]['assignment_status'] == 'unassigned'
+
+    # Labeled tasks are reported as completed regardless of meta
+    tasks = filter_by('assignment_status', 'equal', 'completed')
+    assert [t['id'] for t in tasks] == [task_completed.id]
+
+    # Ordering by Assigned To ('' for unassigned sorts first)
+    tasks = get_tasks({'ordering': ['tasks:assignment_assigned_to_email']})
+    assert [t['id'] for t in tasks] == [task_unassigned.id, task_assigned.id, task_completed.id]
+
+    # Ordering by Assignment Status
+    tasks = get_tasks({'ordering': ['tasks:assignment_status']})
+    assert [t['id'] for t in tasks] == [task_assigned.id, task_completed.id, task_unassigned.id]

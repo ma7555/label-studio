@@ -26,6 +26,7 @@ export const API_CONFIG = {
     customDashboardModels: "/custom-dashboard/models",
     customDashboardModel: "/custom-dashboard/models/:version",
     customDashboardModelDelete: "DELETE:/custom-dashboard/models/:version/delete",
+    customDashboardModelReEvaluate: "POST:/custom-dashboard/models/:version/re-evaluate",
 
     // Presigning
     presignUrlForTask: "/../tasks/:taskID/presign",

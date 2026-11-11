@@ -30,6 +30,7 @@ TIMEOUT_SETUP = float(get_env('ML_TIMEOUT_SETUP', 3))
 TIMEOUT_DUPLICATE_MODEL = float(get_env('ML_TIMEOUT_DUPLICATE_MODEL', 1))
 TIMEOUT_DELETE = float(get_env('ML_TIMEOUT_DELETE', 1))
 TIMEOUT_TRAIN_JOB_STATUS = float(get_env('ML_TIMEOUT_TRAIN_JOB_STATUS', 1))
+TIMEOUT_RE_EVALUATE = float(get_env('ML_TIMEOUT_RE_EVALUATE', 1800))
 
 # TODO
 # we would need to make it configurable on the ML backend side too
@@ -41,6 +42,7 @@ DUPLICATE_URL = 'duplicate_model'
 DELETE_URL = 'delete'
 JOB_STATUS_URL = 'job_status'
 VERSIONS_URL = 'versions'
+RE_EVALUATE_URL = 're-evaluate'
 
 
 class BaseHTTPAPI(object):
@@ -161,7 +163,16 @@ class MLApi(BaseHTTPAPI):
         except requests.exceptions.RequestException as e:
             error_string = str(e)
             status_code = response.status_code if response is not None else 0
-            return MLApiResult(url, request, {'error': error_string}, headers, 'error', status_code=status_code)
+            error_response = {'error': error_string}
+            if response is not None:
+                try:
+                    body = response.json()
+                    if isinstance(body, dict):
+                        error_response.update(body)
+                        error_response.setdefault('error', error_string)
+                except ValueError:
+                    logger.debug('ML backend returned a non-JSON error response for %s', url)
+            return MLApiResult(url, request, error_response, headers, 'error', status_code=status_code)
         status_code = response.status_code
         try:
             response = response.json()
@@ -181,14 +192,47 @@ class MLApi(BaseHTTPAPI):
         time_id = int(project.created_at.timestamp())
         return f'{project.id}.{time_id}'
 
+    @staticmethod
+    def _training_params(project):
+        """Collect the auto learner hyperparameters configured for the project."""
+        params = {}
+
+        epochs = getattr(project, 'training_epochs', None)
+        if epochs:
+            params['epochs'] = int(epochs)
+
+        batch_size = getattr(project, 'training_batch_size', None)
+        if batch_size:
+            params['batch_size'] = int(batch_size)
+
+        learning_rate = getattr(project, 'training_learning_rate', None)
+        if learning_rate:
+            params['learning_rate'] = float(learning_rate)
+
+        imgsz = getattr(project, 'training_imgsz', None)
+        if imgsz:
+            params['imgsz'] = int(imgsz)
+
+        optimizer = getattr(project, 'training_optimizer', None)
+        if optimizer:
+            params['optimizer'] = str(optimizer)
+
+        fraction = getattr(project, 'training_fraction', None)
+        if fraction:
+            params['fraction'] = float(fraction)
+
+        return params
+
     def train(self, project, use_ground_truth=False):
         # TODO Replace AnonymousUser with real user from request
         user = AnonymousUser()
+        training_params = self._training_params(project)
         # Identify if feature flag is turned on
         if flag_set('ff_back_dev_1417_start_training_mlbackend_webhooks_250122_long', user):
             request = {
                 'action': 'START_TRAINING',
                 'project': load_func(settings.WEBHOOK_SERIALIZERS['project'])(instance=project).data,
+                'training_params': training_params,
             }
             return self._request('webhook', request, verbose=False, timeout=TIMEOUT_PREDICT)
         else:
@@ -203,8 +247,16 @@ class MLApi(BaseHTTPAPI):
                 'label_config': project.label_config,
                 'hostname': settings.HOSTNAME if settings.HOSTNAME else ('http://localhost:' + settings.INTERNAL_PORT),
                 'params': {'login': project.task_data_login, 'password': project.task_data_password},
+                'training_params': training_params,
             }
             return self._request('train', request, verbose=False, timeout=TIMEOUT_PREDICT)
+
+    def re_evaluate(self, project, version='current'):
+        request = {
+            'project': load_func(settings.WEBHOOK_SERIALIZERS['project'])(instance=project).data,
+            'version': version,
+        }
+        return self._request(RE_EVALUATE_URL, request, verbose=False, timeout=TIMEOUT_RE_EVALUATE)
 
     def _prep_prediction_req(self, tasks, project, context=None):
         request = {

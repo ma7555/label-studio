@@ -29,7 +29,7 @@ import { ToolManagerMixin } from "../../mixins/ToolManagerMixin";
  * thresholding and flood filling. If you are hosting your images to label on a third-party domain,
  * you will need to enable CORS headers for the Magic Wand to work with cross domain HTTP `GET`
  * requests in order for the Magic Wand to be able to threshold the actual image pixel data. See the
- * [Label Studio storage guide](../guide/storage.html#Troubleshoot-CORS-and-access-problems) for more
+ * [AutoLearner storage guide](../guide/storage.html#Troubleshoot-CORS-and-access-problems) for more
  * details on configuring CORS.
  *
  * ### `Image` Tag Configuration
@@ -48,11 +48,11 @@ import { ToolManagerMixin } from "../../mixins/ToolManagerMixin";
  * third party request), then you should set `crossOrigin` to `use-credentials`. Note that Google's
  * cloud buckets [do not support authenticated requests for CORS requests](https://cloud.google.com/storage/docs/cross-origin#additional_considerations),
  * which  means you either need to make that Google bucket world readable to work with the Magic Wand, or
- * use Label Studio's signed URL support ([AWS](../guide/storage.html#Set-up-connection-in-the-Label-Studio-UI),
+ * use AutoLearner's signed URL support ([AWS](../guide/storage.html#Set-up-connection-in-the-Label-Studio-UI),
  * [GCP](../guide/storage.html#Set-up-connection-in-the-Label-Studio-UI-1), and
  * [Azure](../guide/storage.html#Set-up-connection-in-the-Label-Studio-UI-2)).
  *
- * If the image is on the same host as your Label Studio instance, you can simply leave off the
+ * If the image is on the same host as your AutoLearner instance, you can simply leave off the
  * `crossOrigin` attribute or set it to `none`.
  *
  * @example

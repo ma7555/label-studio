@@ -11,7 +11,7 @@ from pathlib import Path
 from wsgiref.util import FileWrapper
 
 import pandas as pd
-import requests
+import yaml
 from core import utils
 from core.feature_flags import all_flags, flag_set, get_feature_file_path
 from core.label_config import generate_time_series_json
@@ -31,6 +31,9 @@ from rest_framework.views import APIView
 logger = logging.getLogger(__name__)
 
 MODEL_REGISTRY_ROOT = Path(os.getenv('MODEL_REGISTRY', '/models/projects'))
+EVAL_ROOT = Path(os.getenv('EVAL_ROOT', '/eval'))
+EVAL_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tif', '.tiff'}
+EVAL_LABEL_EXTENSION = '.txt'
 
 
 _PARAGRAPH_SAMPLE = None
@@ -52,6 +55,12 @@ def main(request):
 
     # not authenticated
     return redirect(reverse('user-login'))
+
+
+@login_required
+def documentation_page(request):
+    """Serve the SPA shell for the in-app documentation route."""
+    return render(request, 'base.html')
 
 
 def _read_json(path, default=None):
@@ -87,7 +96,12 @@ def _project_version_project(request, version):
     return Project.objects.filter(pk=project_id, organization=request.user.active_organization).first()
 
 
-def _model_registry_index(project):
+def _can_download_models(user):
+    """Only instance administrators may download trained model weights."""
+    return bool(getattr(user, 'is_authenticated', False) and getattr(user, 'is_superuser', False))
+
+
+def _model_registry_index(project, can_download_models=False):
     registry = _project_registry(project.id)
     index = {}
     versions_by_name = {}
@@ -128,6 +142,10 @@ def _model_registry_index(project):
         _read_json(registry.parent / 'current' / 'version.json', {}) or {}
         if current_best and current_best.exists() else {}
     )
+    index['active_metrics'] = (
+        _read_json(registry.parent / 'current' / 'metrics.json', {}) or {}
+        if current_best and current_best.exists() else {}
+    )
 
     versions = list(versions_by_name.values())
     enriched_versions = []
@@ -137,12 +155,16 @@ def _model_registry_index(project):
         root = _version_dir(item.get('version'))
         if root:
             item['progress'] = _model_training_progress(root)
+        item['download_url'] = f'/api/custom-dashboard/models/{item.get("version")}/download'
+        item['has_model_file'] = bool(root and (root / 'best.pt').is_file())
         enriched_versions.append(item)
     index['versions'] = sorted(
         enriched_versions,
         key=lambda item: item.get('updated_at') or item.get('version') or '',
         reverse=True,
     )
+    index['active_download_url'] = f'/api/custom-dashboard/models/current/download?project={project.id}'
+    index['can_download_models'] = can_download_models
     return index
 
 
@@ -160,7 +182,7 @@ def _version_dir(version):
     return path
 
 
-def _model_version_detail(version):
+def _model_version_detail(version, can_download_models=False):
     root = _version_dir(version)
     if not root:
         return None
@@ -173,6 +195,9 @@ def _model_version_detail(version):
         'results': _read_results_csv(root / 'training' / 'results.csv'),
         'artifacts': _collect_model_artifacts(root),
         'progress': _model_training_progress(root),
+        'download_url': f'/api/custom-dashboard/models/{version}/download',
+        'has_model_file': (root / 'best.pt').exists(),
+        'can_download_models': can_download_models,
     }
 
 
@@ -241,11 +266,12 @@ def _collect_model_artifacts(root):
 
 @login_required
 def dashboard_model_api(request, version=None):
+    can_download = _can_download_models(request.user)
     if version:
         project = _project_version_project(request, version)
         if project is None:
             return JsonResponse({'detail': 'Version not found'}, status=404)
-        detail = _model_version_detail(version)
+        detail = _model_version_detail(version, can_download_models=can_download)
         if detail is None:
             return JsonResponse({'detail': 'Version not found'}, status=404)
         return JsonResponse(detail)
@@ -254,7 +280,7 @@ def dashboard_model_api(request, version=None):
     if not project_id:
         return JsonResponse({'detail': 'A project query parameter is required'}, status=400)
     project = get_object_or_404(Project, pk=project_id, organization=request.user.active_organization)
-    return JsonResponse(_model_registry_index(project))
+    return JsonResponse(_model_registry_index(project, can_download_models=can_download))
 
 
 @login_required
@@ -271,6 +297,212 @@ def dashboard_model_artifact(request, version, artifact_path):
 
     content_type = mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
     return FileResponse(path.open('rb'), content_type=content_type)
+
+
+def _download_model_file(path, filename):
+    """Send a model weights file as a download attachment."""
+    response = FileResponse(path.open('rb'), content_type='application/octet-stream')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response['Content-Length'] = path.stat().st_size
+    return response
+
+
+@login_required
+def dashboard_model_download(request, version):
+    """Download the trained model weights for a version or the currently active model."""
+    if not _can_download_models(request.user):
+        return JsonResponse({'detail': 'Only administrators can download trained models'}, status=403)
+
+    if version == 'current':
+        project_id = request.GET.get('project')
+        if not project_id:
+            return JsonResponse({'detail': 'A project query parameter is required'}, status=400)
+        project = get_object_or_404(Project, pk=project_id, organization=request.user.active_organization)
+        registry = _project_registry(project.id)
+        if registry is None:
+            return JsonResponse({'detail': 'Model not found'}, status=404)
+        path = registry.parent / 'current' / 'best.pt'
+        if not path.exists() or not path.is_file():
+            return JsonResponse({'detail': 'Model not found'}, status=404)
+        return _download_model_file(path, f'{project.id}-best.pt')
+
+    project = _project_version_project(request, version)
+    if project is None:
+        return JsonResponse({'detail': 'Version not found'}, status=404)
+    root = _version_dir(version)
+    if not root:
+        return JsonResponse({'detail': 'Version not found'}, status=404)
+
+    path = root / 'best.pt'
+    if not path.exists() or not path.is_file():
+        return JsonResponse({'detail': 'Model not found'}, status=404)
+
+    return _download_model_file(path, f'{version}-best.pt')
+
+
+def _project_eval_config(project_id):
+    """Resolve the private evaluation dataset directories for a project."""
+    config_path = EVAL_ROOT / f'p{project_id}' / 'dataset.yaml'
+    if not config_path.is_file():
+        return None
+    try:
+        config = yaml.safe_load(config_path.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        logger.exception('Failed to read private evaluation config: %s', config_path)
+        return None
+
+    val = config.get('val')
+    if not val:
+        return None
+
+    root = Path(str(config.get('path') or config_path.parent))
+    images_dir = Path(str(val))
+    if not images_dir.is_absolute():
+        images_dir = root / images_dir
+    images_dir = images_dir.resolve()
+    if not images_dir.is_dir():
+        return None
+
+    return {
+        'config': config_path,
+        'images_dir': images_dir,
+        'labels_dir': images_dir.parent / 'labels',
+        'class_names': config.get('names') or {},
+    }
+
+
+def _safe_eval_member(directory, name, allowed_extensions=None):
+    """Resolve a file inside a directory, rejecting path traversal and unwanted extensions."""
+    if not name:
+        return None
+    name = Path(str(name)).name
+    if not name:
+        return None
+    candidate = (directory / name).resolve()
+    try:
+        candidate.relative_to(directory.resolve())
+    except ValueError:
+        return None
+    if allowed_extensions is not None and candidate.suffix.lower() not in allowed_extensions:
+        return None
+    return candidate
+
+
+def _invalidate_eval_cache(config):
+    """Drop Ultralytics' label scan cache so the next evaluation sees new files."""
+    cache = config['images_dir'].parent / 'labels.cache'
+    try:
+        if cache.is_file():
+            cache.unlink()
+    except OSError:
+        logger.warning('Could not remove stale evaluation label cache: %s', cache)
+
+
+def _eval_dataset_payload(project, config):
+    images_dir = config['images_dir']
+    labels_dir = config['labels_dir']
+    images = []
+    for path in sorted(images_dir.iterdir()):
+        if not path.is_file() or path.suffix.lower() not in EVAL_IMAGE_EXTENSIONS:
+            continue
+        label_path = labels_dir / f'{path.stem}{EVAL_LABEL_EXTENSION}'
+        images.append(
+            {
+                'name': path.name,
+                'size': path.stat().st_size,
+                'has_label': label_path.is_file(),
+            }
+        )
+    return {
+        'available': True,
+        'project': project.id,
+        'images_dir': str(images_dir),
+        'labels_dir': str(labels_dir),
+        'class_names': config['class_names'],
+        'count': len(images),
+        'images': images,
+    }
+
+
+@login_required
+@require_http_methods(['GET', 'POST'])
+def dashboard_eval_dataset(request, project_id):
+    """List or upload images for a project's private evaluation dataset."""
+    project = get_object_or_404(Project, pk=project_id, organization=request.user.active_organization)
+    config = _project_eval_config(project.id)
+    if config is None:
+        return JsonResponse(
+            {'available': False, 'detail': 'No private evaluation dataset is configured for this project'},
+            status=404,
+        )
+
+    if request.method == 'POST':
+        files = request.FILES.getlist('files') or request.FILES.getlist('file')
+        if not files:
+            return JsonResponse({'detail': 'No files were uploaded'}, status=400)
+
+        saved = []
+        skipped = []
+        for uploaded in files:
+            suffix = Path(uploaded.name).suffix.lower()
+            if suffix in EVAL_IMAGE_EXTENSIONS:
+                target_dir = config['images_dir']
+            elif suffix == EVAL_LABEL_EXTENSION:
+                target_dir = config['labels_dir']
+            else:
+                skipped.append(uploaded.name)
+                continue
+
+            target = _safe_eval_member(target_dir, uploaded.name, {suffix})
+            if target is None:
+                skipped.append(uploaded.name)
+                continue
+
+            target_dir.mkdir(parents=True, exist_ok=True)
+            with target.open('wb') as destination:
+                for chunk in uploaded.chunks():
+                    destination.write(chunk)
+            saved.append(target.name)
+
+        if saved:
+            _invalidate_eval_cache(config)
+
+        return JsonResponse(
+            {
+                'saved': saved,
+                'skipped': skipped,
+                'dataset': _eval_dataset_payload(project, config),
+            }
+        )
+
+    return JsonResponse(_eval_dataset_payload(project, config))
+
+
+@login_required
+@require_http_methods(['GET', 'DELETE'])
+def dashboard_eval_dataset_file(request, project_id, filename):
+    """Serve or delete a single image from a project's private evaluation dataset."""
+    project = get_object_or_404(Project, pk=project_id, organization=request.user.active_organization)
+    config = _project_eval_config(project.id)
+    if config is None:
+        return JsonResponse({'detail': 'Private evaluation dataset not found'}, status=404)
+
+    target = _safe_eval_member(config['images_dir'], filename, EVAL_IMAGE_EXTENSIONS)
+    if target is None or not target.is_file():
+        return JsonResponse({'detail': 'Image not found'}, status=404)
+
+    if request.method == 'DELETE':
+        target.unlink()
+        label_path = _safe_eval_member(
+            config['labels_dir'], f'{target.stem}{EVAL_LABEL_EXTENSION}', {EVAL_LABEL_EXTENSION}
+        )
+        if label_path is not None and label_path.is_file():
+            label_path.unlink()
+        _invalidate_eval_cache(config)
+        return JsonResponse({'deleted': target.name, 'dataset': _eval_dataset_payload(project, config)})
+
+    content_type = mimetypes.guess_type(target.name)[0] or 'application/octet-stream'
+    return FileResponse(target.open('rb'), content_type=content_type)
 
 
 @login_required
@@ -295,6 +527,33 @@ def dashboard_model_delete(request, version):
 
     shutil.rmtree(root)
     return JsonResponse({'status': 'deleted', 'version': version})
+
+
+@login_required
+@require_http_methods(['POST'])
+def dashboard_model_re_evaluate(request, version):
+    """Re-score one model version, or the active/baseline model, on the private eval dataset."""
+    if version == 'current':
+        project_id = request.GET.get('project')
+        if not project_id:
+            return JsonResponse({'detail': 'A project query parameter is required'}, status=400)
+        project = get_object_or_404(Project, pk=project_id, organization=request.user.active_organization)
+    else:
+        project = _project_version_project(request, version)
+        if project is None:
+            return JsonResponse({'detail': 'Version not found'}, status=404)
+        if _version_dir(version) is None:
+            return JsonResponse({'detail': 'Version not found'}, status=404)
+
+    ml_backend = project.ml_backend
+    if ml_backend is None:
+        return JsonResponse({'detail': 'No ML backend is configured for this project'}, status=400)
+
+    result = ml_backend.api.re_evaluate(project, version=version)
+    if result.is_error:
+        return JsonResponse({'detail': result.error_message or 'Re-evaluation failed'}, status=400)
+
+    return JsonResponse(result.response, status=200)
 
 
 def version_page(request):
@@ -401,30 +660,13 @@ def samples_paragraphs(request):
 
 
 def heidi_tips(request):
-    """Fetch live tips from github raw liveContent.json to avoid caching and client side CORS issues"""
-    url = 'https://raw.githubusercontent.com/HumanSignal/label-studio/refs/heads/develop/web/apps/labelstudio/src/components/HeidiTips/liveContent.json'
+    """Serve tips from the local bundle only.
 
-    response = None
-    try:
-        response = requests.get(
-            url,
-            headers={'Cache-Control': 'no-cache', 'Content-Type': 'application/json', 'Accept': 'application/json'},
-            timeout=5,
-        )
-        # Raise an exception for bad status codes to avoid caching
-        response.raise_for_status()
-    # Catch all exceptions and return either the status code if there was a response, or default to 404 if there are network issues
-    # This is done this way to catch thrown exceptions from the request itself which will occur for air-gapped environments
-    except Exception:
-        # Any other HTTP error will return the error code, and other errors like connection/timeout errors will be a 404
-        content = {}
-        status_code = 404
-        if response is not None:
-            content['detail'] = response.reason
-            status_code = response.status_code
-        return HttpResponse(json.dumps(content), content_type='application/json', status=status_code)
-
-    return HttpResponse(response.content, content_type='application/json')
+    Upstream live tips used to be proxied from the public Label Studio repository,
+    which reintroduced third-party branding and external links. The frontend falls
+    back to its bundled, rebranded tips when this returns 404.
+    """
+    return HttpResponse(json.dumps({'detail': 'Live tips are disabled'}), content_type='application/json', status=404)
 
 
 def static_file_with_host_resolver(path_on_disk, content_type):

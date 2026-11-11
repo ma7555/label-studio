@@ -596,6 +596,8 @@ DATA_UNDEFINED_NAME = '$undefined$'
 LICENSE = {}
 VERSIONS = {}
 VERSION_EDITION = 'Community'
+# Product name shown in the front end (page title, header, login page)
+APP_NAME = get_env('APP_NAME', 'AutoLearner')
 LATEST_VERSION_CHECK = get_bool_env('LATEST_VERSION_CHECK', True)
 VERSIONS_CHECK_TIME = 0
 ALLOW_ORGANIZATION_WEBHOOKS = get_bool_env('ALLOW_ORGANIZATION_WEBHOOKS', False)

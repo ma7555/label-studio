@@ -268,6 +268,46 @@ class Project(ProjectMixin, FsmHistoryStateModel):
         default=0,
         help_text='Minimum number of completed tasks after which model training is started',
     )
+    training_epochs = models.IntegerField(
+        _('training epochs'),
+        default=50,
+        help_text='Number of epochs used when the auto learner trains a model',
+    )
+    training_batch_size = models.IntegerField(
+        _('training batch size'),
+        default=2,
+        null=True,
+        blank=True,
+        help_text='Batch size used when the auto learner trains a model; leave empty to use the model default',
+    )
+    training_learning_rate = models.FloatField(
+        _('training learning rate'),
+        default=0.001,
+        null=True,
+        blank=True,
+        help_text='Learning rate used when the auto learner trains a model; leave empty to use the model default',
+    )
+    training_imgsz = models.IntegerField(
+        _('training image size'),
+        default=640,
+        null=True,
+        blank=True,
+        help_text='Image size in pixels used when the auto learner trains a model; leave empty to use the model default',
+    )
+    training_optimizer = models.CharField(
+        _('training optimizer'),
+        default='auto',
+        max_length=32,
+        blank=True,
+        help_text='Optimizer used when the auto learner trains a model; "auto" lets Ultralytics choose',
+    )
+    training_fraction = models.FloatField(
+        _('training fraction'),
+        default=1.0,
+        null=True,
+        blank=True,
+        help_text='Fraction of the training dataset to use, between 0 and 1; 1.0 uses all data',
+    )
 
     control_weights = JSONField(
         _('control weights'),

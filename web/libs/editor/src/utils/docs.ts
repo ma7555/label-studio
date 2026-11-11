@@ -1,29 +1,23 @@
 /**
- * Returns the base URL for documentation depending on deployment type.
- * - Enterprise: https://docs.humansignal.com/
- * - Open Source: https://labelstud.io/
+ * Returns the base URL for the in-app documentation.
+ *
+ * The product ships a single, self-hosted documentation page, so every help
+ * link resolves there instead of to a third-party site.
  */
 export function getDocsBaseUrl(): string {
-  if (typeof window !== "undefined" && window.APP_SETTINGS?.billing?.enterprise) {
-    return "https://docs.humansignal.com/";
-  }
-  return "https://labelstud.io/";
+  return "/documentation";
 }
 
 /**
- * Returns a full documentation URL for the current deployment type.
+ * Returns a full documentation URL.
  *
- * Usage:
- *   getDocsUrl('guide/labeling') // same path for both domains
- *   getDocsUrl('guide/labeling', 'guide/label-guide') // first param for labelstud.io, second for docs.humansignal.com
+ * The bundled documentation is a single page, so the requested path is ignored
+ * and the base documentation URL is returned.
  *
- * @param pathOSS - Path for labelstud.io (and default for both if only one param)
- * @param pathEnterprise - Optional path for docs.humansignal.com
+ * @param _pathOSS - Retained for call-site compatibility
+ * @param _pathEnterprise - Retained for call-site compatibility
  * @returns {string} Full documentation URL
  */
-export function getDocsUrl(pathOSS: string, pathEnterprise?: string): string {
-  const base = getDocsBaseUrl();
-  const isEnterprise = typeof window !== "undefined" && window.APP_SETTINGS?.billing?.enterprise;
-  const path = isEnterprise && pathEnterprise ? pathEnterprise : pathOSS;
-  return `${base.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
+export function getDocsUrl(_pathOSS?: string, _pathEnterprise?: string): string {
+  return getDocsBaseUrl();
 }

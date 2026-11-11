@@ -8,7 +8,7 @@
  * Use with the following data types: text.
  *
  * ### How to read my text files in python?
- * The Label Studio editor counts `\r\n` as two different symbols, displaying them as `\n\n`, making it look like there is extra margin between lines.
+ * The AutoLearner editor counts `\r\n` as two different symbols, displaying them as `\n\n`, making it look like there is extra margin between lines.
  * You should either preprocess your files to replace `\r\n` with `\n` completely, or open files in Python with `newline=''` to avoid converting `\r\n` to `\n`:
  * `with open('my-file.txt', encoding='utf-8', newline='') as f: text = f.read()`
  * This is especially important when you are doing span NER labeling and need to get the correct offsets:

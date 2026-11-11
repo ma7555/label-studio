@@ -83,7 +83,7 @@ RUN apk add --no-cache \
     python3-dev \
     pcre2-dev
 
-ADD https://install.python-poetry.org /tmp/install-poetry.py
+ADD https://install.python-poetry.org/install-poetry.py /tmp/install-poetry.py
 RUN python /tmp/install-poetry.py
 
 WORKDIR /label-studio

@@ -72,7 +72,7 @@ const EmptyConfigPlaceholder = () => (
     <p>
       Start from one of our predefined templates or create your own config on the Code panel. The labeling config is
       XML-based and you can{" "}
-      <a href="https://labelstud.io/tags/" target="_blank" rel="noreferrer">
+      <a href="/documentation" target="_blank" rel="noreferrer">
         read about the available tags in our documentation
       </a>
       .
@@ -622,7 +622,7 @@ const Configurator = ({
   const extra = (
     <p className={configClass.elem("tags-link").toClassName()}>
       Configure the labeling interface with tags.&nbsp;
-      <a href="https://labelstud.io/tags/" target="_blank" rel="noreferrer">
+      <a href="/documentation" target="_blank" rel="noreferrer">
         See all tags
       </a>
       .

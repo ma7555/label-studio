@@ -34,7 +34,7 @@ const TemplatesInGroup = ({ templates, group, onSelectRecipe, isEdition }) => {
             key={recipe.title}
             onClick={() => !isDisabled && onSelectRecipe(recipe)}
             className={listClass.elem("template").mod({ disabled: isDisabled }).toClassName()}
-            title={isDisabled ? "Enterprise feature - Available in Label Studio Enterprise" : ""}
+            title={isDisabled ? "Enterprise feature - Available in AutoLearner Enterprise" : ""}
           >
             <img src={recipe.image} alt={""} />
             <div className="flex flex-col items-center w-full">
@@ -115,7 +115,7 @@ export const TemplatesList = ({ selectedGroup, selectedRecipe, onCustomTemplate,
         <IconInfo className={listClass.elem("info-icon").toClassName()} width="20" height="20" />
         <span>
           See the documentation to{" "}
-          <a href="https://labelstud.io/guide" target="_blank" rel="noreferrer">
+          <a href="/documentation" target="_blank" rel="noreferrer">
             contribute a template
           </a>
           .

@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Button, buttonVariant, SimpleCard, Spinner, Typography } from "@humansignal/ui";
+import { IconFileDownload } from "@humansignal/icons";
 import { useUpdatePageTitle } from "@humansignal/core";
 import { useProject } from "../../providers/ProjectProvider";
 import { useAPI } from "../../providers/ApiProvider";
 import { Space } from "../../components/Space/Space";
+import { TrainingHyperparameters } from "./TrainingHyperparameters";
+import { EvaluationDataset } from "./EvaluationDataset";
+import { ModelsTab } from "./ModelsTab";
+
+const DASHBOARD_TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "models", label: "Models" },
+  { id: "evaluation", label: "Evaluation Dataset" },
+];
 
 export const ProjectDashboardPage = () => {
   const { project } = useProject();
@@ -12,6 +22,7 @@ export const ProjectDashboardPage = () => {
   const [registry, setRegistry] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [tab, setTab] = useState("overview");
 
   useUpdatePageTitle(project?.title ? `${project.title} Dashboard` : "Project Dashboard");
 
@@ -72,6 +83,7 @@ export const ProjectDashboardPage = () => {
   }
 
   const versions = registry?.versions ?? [];
+  const canDownloadCurrent = Boolean(registry?.active_download_url) && Boolean(registry?.can_download_models);
 
   return (
     <main className="p-6 flex flex-col gap-6">
@@ -84,68 +96,129 @@ export const ProjectDashboardPage = () => {
             Project-specific YOLO training and evaluation history.
           </Typography>
         </div>
-        <Link className={buttonVariant({ look: "outlined" })} to={`/projects/${project?.id}/data`} aria-label="Back to data">
-          Back to Data
-        </Link>
+        <div className="flex items-center gap-2">
+          {canDownloadCurrent && (
+            <a
+              className={buttonVariant({ look: "outlined" }, "gap-tight")}
+              href={registry.active_download_url}
+              aria-label="Download current model"
+            >
+              <IconFileDownload width={16} height={16} />
+              Download model
+            </a>
+          )}
+          <Link className={buttonVariant({ look: "outlined" })} to={`/projects/${project?.id}/data`} aria-label="Back to data">
+            Back to Data
+          </Link>
+        </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4 max-[1100px]:grid-cols-2 max-[700px]:grid-cols-1">
-        <MetricCard title="Current Version" value={registry?.current_version ?? "None promoted yet"} />
-        <MetricCard title="Promotion Metric" value={registry?.promotion_metric ?? "fitness"} note={`minimum delta ${registry?.promotion_min_delta ?? 0}`} />
-        <MetricCard title="Versions" value={versions.length} />
-        <MetricCard title="Updated" value={registry?.updated_at ?? "Not available"} />
+      <div className="flex items-center gap-1 border-b border-neutral-border-subtle">
+        {DASHBOARD_TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setTab(item.id)}
+            className={[
+              "px-4 py-2 -mb-px border-b-2 text-sm transition-colors",
+              tab === item.id
+                ? "border-primary-content text-neutral-content font-medium"
+                : "border-transparent text-neutral-content-subtler hover:text-neutral-content",
+            ].join(" ")}
+            aria-current={tab === item.id ? "page" : undefined}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
 
-      <TrainingProgress versions={versions} projectId={project?.id} />
-
-      <SimpleCard
-        title="Version History"
-        description={
-          registry?.active_model ? (
-            <span>
-              Active model: <code>{registry.active_model}</code>
-            </span>
-          ) : undefined
-        }
-      >
-        {versions.length === 0 ? (
-          <div className="h-40 flex justify-center items-center border border-primary-border-subtle bg-primary-emphasis-subtle rounded-lg">
-            <Typography size="small" className="text-neutral-content-subtler">
-              No model versions found for this project yet.
-            </Typography>
+      {tab === "overview" && (
+        <>
+          <div className="grid grid-cols-4 gap-4 max-[1100px]:grid-cols-2 max-[700px]:grid-cols-1">
+            <MetricCard title="Current Version" value={registry?.current_version ?? "None promoted yet"} />
+            <MetricCard
+              title="Promotion Metric"
+              value={registry?.promotion_metric ?? "fitness"}
+              note={`minimum delta ${registry?.promotion_min_delta ?? 0}`}
+            />
+            <MetricCard title="Versions" value={versions.length} />
+            <MetricCard title="Updated" value={registry?.updated_at ?? "Not available"} />
           </div>
-        ) : (
-          <DataManagerLikeTable
-            columns={[
-              "Version",
-              "Status",
-              "Progress",
-              "Decision",
-              "mAP50-95",
-              "mAP50",
-              "Precision",
-              "Recall",
-              "Updated",
-            ]}
-            rows={versions.map((item) => [
-              <Link to={`/projects/${project?.id}/dashboard/${item.version}`} className="text-primary-link hover:underline font-mono">
-                {item.version}
-              </Link>,
-              <StatusBadge status={item.status} />,
-              <ProgressCell progress={item.progress} />,
-              item.decision ?? "-",
-              formatMetric(item.map50_95),
-              formatMetric(item.map50),
-              formatMetric(item.precision),
-              formatMetric(item.recall),
-              item.updated_at ?? "-",
-            ])}
-          />
-        )}
-      </SimpleCard>
+
+          <TrainingHyperparameters />
+
+          <TrainingProgress versions={versions} projectId={project?.id} />
+
+          <SimpleCard
+            title="Version History"
+            description={
+              registry?.active_model ? (
+                <span>
+                  Active model: <code>{registry.active_model}</code>
+                </span>
+              ) : undefined
+            }
+          >
+            {versions.length === 0 ? (
+              <div className="h-40 flex justify-center items-center border border-primary-border-subtle bg-primary-emphasis-subtle rounded-lg">
+                <Typography size="small" className="text-neutral-content-subtler">
+                  No model versions found for this project yet.
+                </Typography>
+              </div>
+            ) : (
+              <DataManagerLikeTable
+                columns={[
+                  "Version",
+                  "Status",
+                  "Progress",
+                  "Decision",
+                  "mAP50-95",
+                  "mAP50",
+                  "Precision",
+                  "Recall",
+                  "Updated",
+                  "Download",
+                ]}
+                rows={versions.map((item) => [
+                  <Link to={`/projects/${project?.id}/dashboard/${item.version}`} className="text-primary-link hover:underline font-mono">
+                    {item.version}
+                  </Link>,
+                  <StatusBadge status={item.status} />,
+                  <ProgressCell progress={item.progress} />,
+                  item.decision ?? "-",
+                  formatMetric(item.map50_95),
+                  formatMetric(item.map50),
+                  formatMetric(item.precision),
+                  formatMetric(item.recall),
+                  item.updated_at ?? "-",
+                  item.has_model_file && registry?.can_download_models ? (
+                    <a
+                      href={item.download_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Download model ${item.version}`}
+                      className="inline-flex items-center gap-1 text-primary-link hover:underline"
+                    >
+                      <IconFileDownload width={16} height={16} />
+                      .pt
+                    </a>
+                  ) : (
+                    "-"
+                  ),
+                ])}
+              />
+            )}
+          </SimpleCard>
+        </>
+      )}
+
+      {tab === "models" && <ModelsTab registry={registry} projectId={project?.id} onRefresh={loadRegistry} />}
+
+      {tab === "evaluation" && <EvaluationDataset />}
     </main>
   );
 };
+
 
 export const ProjectModelVersionPage = ({ version }) => {
   const { project } = useProject();
@@ -251,6 +324,16 @@ export const ProjectModelVersionPage = ({ version }) => {
           <Link className={buttonVariant({ look: "outlined" })} to={`/projects/${project?.id}/dashboard`} aria-label="Back to dashboard">
             Back to Dashboard
           </Link>
+          {detail.download_url && detail.has_model_file && detail.can_download_models && (
+            <a
+              className={buttonVariant({ look: "outlined" }, "gap-tight")}
+              href={detail.download_url}
+              aria-label="Download model"
+            >
+              <IconFileDownload width={16} height={16} />
+              Download model
+            </a>
+          )}
           <Button
             look="destructive"
             disabled={!canDelete || deleting}

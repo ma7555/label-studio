@@ -20,7 +20,7 @@ const gcsWifProvider: ProviderConfig = {
           <IconSpark />
           <AlertTitle>Enterprise Feature</AlertTitle>
           <AlertDescription>
-            Google Cloud Storage with Workload Identity Federation is available in Label Studio Enterprise.{" "}
+            Google Cloud Storage with Workload Identity Federation is available in AutoLearner Enterprise.{" "}
             <a
               href="https://docs.humansignal.com/guide/storage.html#Google-Cloud-Storage-with-Workload-Identity-Federation-WIF"
               target="_blank"

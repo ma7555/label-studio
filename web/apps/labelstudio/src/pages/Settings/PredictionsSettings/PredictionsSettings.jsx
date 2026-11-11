@@ -53,7 +53,7 @@ export const PredictionsSettings = () => {
             <Typography size="small" className="text-neutral-content-subtler mt-base mb-wider">
               List of predictions available in the project. Each card is associated with a separate model version. To
               learn about how to import predictions,{" "}
-              <a href="https://labelstud.io/guide/predictions.html" target="_blank" rel="noreferrer">
+              <a href="/documentation" target="_blank" rel="noreferrer">
                 see&nbsp;the&nbsp;documentation
               </a>
               .
@@ -73,7 +73,7 @@ export const PredictionsSettings = () => {
                 !window.APP_SETTINGS?.whitelabel_is_active && (
                   <Typography variant="label" size="small" className="text-primary-link">
                     <a
-                      href="https://labelstud.io/guide/predictions"
+                      href="/documentation"
                       target="_blank"
                       rel="noopener noreferrer"
                       data-testid="predictions-help-link"
